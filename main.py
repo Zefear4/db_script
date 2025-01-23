@@ -1,6 +1,5 @@
 import psycopg2
 
-from serviceIp import get_ip
 from serviceWhoIs import get_whois
 
 try:
@@ -12,45 +11,36 @@ try:
     )
 
     with connection.cursor() as cursor:
-        cursor.execute('SELECT * FROM public."Organizations" ORDER BY id ASC ')
-        organizations = cursor.fetchall()
-        for organization in organizations:
+        cursor.execute('SELECT * FROM public."Domains" ORDER BY id ASC ')
+        domains = cursor.fetchall()
+        for domain_info in domains:
 
-            id = organization[0]
-            site = organization[3]
-            domain = None
+            domain_id = domain_info[0]
+            domain = domain_info[2]
             registrar = None
-            ip = None
             creation_date = None
             expiration_date = None
 
-            if site:
-                whois_info = get_whois(site)
-                domain = whois_info["domain_name"]
-                registrar = whois_info["registrar"]
-                if whois_info["creation_date"]:
-                    creation_date = whois_info["creation_date"].date()
-                if whois_info["expiration_date"]:
-                    expiration_date = whois_info["expiration_date"].date()
-                if domain:
-                    ip = get_ip(domain)
+            whois_info = get_whois(domain)
+            registrar = whois_info["registrar"]
+            if whois_info["creation_date"]:
+                creation_date = whois_info["creation_date"].date()
+            if whois_info["expiration_date"]:
+                expiration_date = whois_info["expiration_date"].date()
 
-                default_value = 'default'
-                cursor.execute("""
+            default_value = 'default'
+            cursor.execute("""
                     SELECT id FROM public."Checks" 
-                    WHERE organization_id = %s
-                    AND COALESCE(domain_name, %s) = %s
+                    WHERE domain = %s
                     AND COALESCE(registrar, %s) = %s
-                    AND COALESCE(ip, %s) = %s
                     AND COALESCE(creation_date, '1000-10-10') = %s
                     AND COALESCE(expiration_date, '1000-10-10') = %s;
-                """, (id, default_value, domain or default_value, default_value,
-                      registrar or default_value, default_value, ip or default_value,
+                """, (domain_id, default_value, registrar or default_value,
                       creation_date or '1000-10-10', expiration_date or '1000-10-10'))
 
-                if not cursor.fetchone():
-                    cursor.execute("INSERT INTO public.\"Checks\" (organization_id, check_date, domain_name, registrar, ip, creation_date, expiration_date) VALUES (%s, NOW(), %s, %s, %s, %s, %s);", (id, domain, registrar, ip, creation_date, expiration_date))
-                    connection.commit()
+            if not cursor.fetchone():
+                cursor.execute("INSERT INTO public.\"Checks\" (date, domain, registrar, creation_date, expiration_date) VALUES (NOW(), %s, %s, %s, %s);", (domain_id, registrar, creation_date, expiration_date))
+                connection.commit()
 
 except Exception as ex:
     print("Err: ", ex)
